@@ -1,0 +1,644 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 1 — Plant Profile
+// ═══════════════════════════════════════════════════════════════
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  gardens       Garden[]
+  notifications Notification[]
+}
+
+model Garden {
+  id        String  @id @default(cuid())
+  name      String
+  climate   Climate @default(HOT_ARID)
+  createdAt DateTime @default(now())
+
+  userId  String
+  user    User    @relation(fields: [userId], references: [id])
+
+  plants        Plant[]
+  weatherConfig GardenWeatherConfig?
+}
+
+enum Climate {
+  HOT_ARID
+  MEDITERRANEAN
+  TROPICAL
+  TEMPERATE
+}
+
+model PlantCatalog {
+  id               String        @id @default(cuid())
+  nameAr           String
+  nameEn           String
+  nameLatin        String?
+  category         PlantCategory
+
+  lightMin         Int
+  lightMax         Int
+  lightDescription String?
+
+  soilPH_min           Float   @default(6.0)
+  soilPH_max           Float   @default(7.0)
+  drainageRequired     Boolean @default(true)
+  saltSensitivity      Sensitivity @default(MEDIUM)
+
+  wateringCycleSummer  Int
+  wateringCycleWinter  Int
+
+  plants Plant[]
+}
+
+enum PlantCategory {
+  FRUIT_TREE
+  VEGETABLE
+  HERB
+  ORNAMENTAL
+  INDOOR
+  SUCCULENT
+}
+
+model Plant {
+  id            String        @id @default(cuid())
+  nickname      String?
+  plantedAt     DateTime
+  potSize       PotSize?
+  location      PlantLocation
+  soilType      SoilType      @default(MIXED)
+  healthStatus  HealthStatus  @default(HEALTHY)
+  lastInspection DateTime?
+  notes         String?
+
+  gardenId  String
+  garden    Garden      @relation(fields: [gardenId], references: [id])
+
+  catalogId String
+  catalog   PlantCatalog @relation(fields: [catalogId], references: [id])
+
+  schedules         Schedule[]
+  healthLogs        HealthLog[]
+  photos            PlantPhoto[]
+  diagnosisSessions DiagnosisSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PotSize {
+  SMALL
+  MEDIUM
+  LARGE
+  XLARGE
+}
+
+enum PlantLocation {
+  INDOOR
+  OUTDOOR
+  BALCONY
+  GREENHOUSE
+}
+
+enum SoilType {
+  CLAY
+  SANDY
+  LOAMY
+  MIXED
+  PEAT
+  COCO_COIR
+}
+
+enum HealthStatus {
+  HEALTHY
+  STRESSED
+  DISEASED
+  RECOVERING
+  CRITICAL
+}
+
+model PlantPhoto {
+  id         String       @id @default(cuid())
+  url        String
+  purpose    PhotoPurpose
+  aiAnalysis String?
+
+  plantId String
+  plant   Plant  @relation(fields: [plantId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum PhotoPurpose {
+  PROFILE
+  DIAGNOSIS
+  PROGRESS
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — Smart Scheduling
+// ═══════════════════════════════════════════════════════════════
+
+model Schedule {
+  id                   String       @id @default(cuid())
+  type                 ScheduleType
+  baseIntervalDays     Int
+  adjustedIntervalDays Int
+  lastCompletedAt      DateTime?
+  nextDueAt            DateTime
+  isActive             Boolean      @default(true)
+  lastTempUsed         Float?
+
+  plantId String
+  plant   Plant  @relation(fields: [plantId], references: [id])
+
+  entries             ScheduleEntry[]
+  notifications       Notification[]
+  pauseRecords        SchedulePause[]
+  weatherOverrides    WeatherScheduleOverride[]
+  fertilizerAssignment FertilizerAssignment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ScheduleType {
+  WATERING
+  FERTILIZING_NPK
+  FERTILIZING_MICRO
+  CALCIUM_TREATMENT
+  FUNGICIDE
+  INSECTICIDE
+  PRUNING
+  INSPECTION
+  REPOTTING
+}
+
+model ScheduleEntry {
+  id          String    @id @default(cuid())
+  dueAt       DateTime
+  completedAt DateTime?
+  skipped     Boolean   @default(false)
+  skipReason  String?
+  notes       String?
+  quantity    Float?
+  unit        String?
+
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id            String               @id @default(cuid())
+  type          NotificationType
+  title         String
+  body          String
+  priority      NotificationPriority @default(NORMAL)
+  readAt        DateTime?
+  actionTakenAt DateTime?
+  scheduledFor  DateTime
+  sentAt        DateTime?
+
+  scheduleId String?
+  schedule   Schedule? @relation(fields: [scheduleId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum NotificationType {
+  WATERING_DUE
+  WATERING_OVERDUE
+  FERTILIZING_DUE
+  TREATMENT_DUE
+  HEAT_WAVE_WARNING
+  FROST_WARNING
+  CALCIUM_REMINDER
+  HEALTH_CHECK_DUE
+  SCHEDULE_ADJUSTED
+  DIAGNOSIS_READY
+  DIAGNOSIS_NEEDS_CONFIRMATION
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 3 — Health × Fertilizer
+// ═══════════════════════════════════════════════════════════════
+
+model HealthLog {
+  id                   String            @id @default(cuid())
+  diagnosis            String
+  diagnosisCategory    DiagnosisCategory?
+  treatment            String?
+  severity             Severity
+  resolvedAt           DateTime?
+  scheduleRulesApplied Boolean           @default(false)
+
+  plantId String
+  plant   Plant  @relation(fields: [plantId], references: [id])
+
+  pausedSchedules  SchedulePause[]
+  diagnosisSession DiagnosisSession? @relation(fields: [diagnosisSessionId], references: [id])
+  diagnosisSessionId String?         @unique
+
+  createdAt DateTime @default(now())
+}
+
+enum DiagnosisCategory {
+  FUNGAL_DISEASE
+  BACTERIAL_DISEASE
+  SPIDER_MITE
+  SCALE_INSECT
+  MEALYBUG
+  SALT_BURN
+  ROOT_ROT
+  NUTRIENT_DEF_NITROGEN
+  NUTRIENT_DEF_IRON
+  NUTRIENT_DEF_CALCIUM
+  HEAT_STRESS
+  OVERWATERING
+  UNDERWATERING
+  PRUNING_RECOVERY
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model SchedulePause {
+  id                     String      @id @default(cuid())
+  reason                 PauseReason
+  reasonDetail           String
+  pausedAt               DateTime    @default(now())
+  resumeAt               DateTime?
+  resumedAt              DateTime?
+  resumeDosageMultiplier Float       @default(1.0)
+
+  scheduleId  String
+  schedule    Schedule  @relation(fields: [scheduleId], references: [id])
+
+  healthLogId String
+  healthLog   HealthLog @relation(fields: [healthLogId], references: [id])
+}
+
+enum PauseReason {
+  DISEASE_ACTIVE
+  HEAT_WAVE
+  POST_PRUNING
+  SALT_FLUSH
+  USER_MANUAL
+  DORMANCY
+}
+
+model FertilizerCatalog {
+  id                  String            @id @default(cuid())
+  nameAr              String
+  nameEn              String
+  brand               String?
+  type                FertilizerType
+  formulation         Formulation
+
+  nitrogenN           Float?
+  phosphorusP         Float?
+  potassiumK          Float?
+  microNutrients      Json?
+
+  applicationMethod   ApplicationMethod
+  heatMaxC            Float?
+  minIntervalDays     Int
+  saltIndex           SaltIndex
+
+  dilutionMlPerLiter  Float?
+  gramsPerSqMeter     Float?
+
+  incompatibleTypes   FertilizerType[]
+  contraindicatedFor  DiagnosisCategory[]
+
+  assignments FertilizerAssignment[]
+}
+
+enum FertilizerType {
+  NPK_BALANCED
+  NPK_HIGH_N
+  NPK_HIGH_P
+  NPK_HIGH_K
+  CALCIUM_BORON
+  IRON_CHELATE
+  MAGNESIUM_SULFATE
+  HUMIC_ACID
+  FUNGICIDE_COPPER
+  FUNGICIDE_SULFUR
+  INSECTICIDE_BIO
+  INSECTICIDE_CHEM
+  SOIL_AMENDMENT
+  GROWTH_HORMONE
+}
+
+enum ApplicationMethod {
+  FOLIAR_SPRAY
+  SOIL_DRENCH
+  GRANULAR_TOPSOIL
+  INJECTION
+  DRIP
+}
+
+enum Formulation {
+  LIQUID
+  GRANULAR
+  POWDER
+  PASTE
+}
+
+enum SaltIndex {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+model FertilizerAssignment {
+  id               String @id @default(cuid())
+  dosageMultiplier Float  @default(1.0)
+  notes            String?
+
+  scheduleId   String            @unique
+  schedule     Schedule          @relation(fields: [scheduleId], references: [id])
+
+  fertilizerId String
+  fertilizer   FertilizerCatalog @relation(fields: [fertilizerId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 4 — Weather Integration
+// ═══════════════════════════════════════════════════════════════
+
+model GardenWeatherConfig {
+  id        String @id @default(cuid())
+  latitude  Float
+  longitude Float
+  cityName  String?
+
+  heatWaveThresholdC    Float @default(40)
+  frostThresholdC       Float @default(5)
+  heavyRainThresholdMm  Float @default(5)
+  highHumidityThreshold Int   @default(80)
+  highWindThresholdKmh  Float @default(30)
+
+  lastFetchedAt DateTime?
+
+  gardenId String @unique
+  garden   Garden @relation(fields: [gardenId], references: [id])
+
+  snapshots WeatherSnapshot[]
+  alerts    WeatherAlert[]
+}
+
+model WeatherSnapshot {
+  id              String           @id @default(cuid())
+  forecastDate    DateTime
+  maxTempC        Float
+  minTempC        Float
+  avgHumidity     Int
+  precipitationMm Float            @default(0)
+  windSpeedKmh    Float            @default(0)
+  condition       WeatherCondition
+  detectedEvents  WeatherEvent[]
+
+  weatherConfigId String
+  weatherConfig   GardenWeatherConfig @relation(fields: [weatherConfigId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([weatherConfigId, forecastDate])
+}
+
+enum WeatherCondition {
+  CLEAR
+  PARTLY_CLOUDY
+  CLOUDY
+  RAIN
+  THUNDERSTORM
+  SANDSTORM
+  FOG
+  SNOW
+}
+
+enum WeatherEvent {
+  HEAT_WAVE
+  EXTREME_HEAT
+  FROST
+  RAIN_TODAY
+  RAIN_TOMORROW
+  HIGH_HUMIDITY
+  HIGH_WIND
+  SANDSTORM
+  TEMPERATURE_DROP
+}
+
+model WeatherAlert {
+  id            String        @id @default(cuid())
+  event         WeatherEvent
+  severity      AlertSeverity
+  forecastDate  DateTime
+  message       String
+  acknowledgedAt DateTime?
+
+  weatherConfigId String
+  weatherConfig   GardenWeatherConfig @relation(fields: [weatherConfigId], references: [id])
+
+  overrides WeatherScheduleOverride[]
+
+  createdAt DateTime @default(now())
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model WeatherScheduleOverride {
+  id             String         @id @default(cuid())
+  action         OverrideAction
+  reason         String
+  activeFrom     DateTime
+  activeUntil    DateTime
+  wateringFrequencyMultiplier Float?
+
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id])
+
+  weatherAlertId String
+  weatherAlert   WeatherAlert @relation(fields: [weatherAlertId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum OverrideAction {
+  PAUSE
+  SKIP_NEXT
+  MODIFY_WATERING
+  TRIGGER_NOW
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 5 — AI Vision Diagnosis
+// ═══════════════════════════════════════════════════════════════
+
+model DiagnosisSession {
+  id              String        @id @default(cuid())
+  status          SessionStatus @default(PENDING)
+  contextSnapshot Json
+
+  imageCount                Int     @default(0)
+  additionalPhotoRequested  Boolean @default(false)
+  additionalPhotoGuidance   String?
+
+  plantId String
+  plant   Plant  @relation(fields: [plantId], references: [id])
+
+  images       DiagnosisImage[]
+  result       AIAnalysisResult?
+  confirmation DiagnosisConfirmation?
+  healthLog    HealthLog?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum SessionStatus {
+  PENDING
+  ANALYZING
+  AWAITING_CONFIRMATION
+  NEEDS_BETTER_PHOTO
+  CONFIRMED
+  APPLIED
+  DISMISSED
+}
+
+model DiagnosisImage {
+  id            String              @id @default(cuid())
+  url           String
+  order         Int
+  angle         PhotoAngle
+  qualityScore  Float?
+  qualityIssues ImageQualityIssue[]
+
+  sessionId String
+  session   DiagnosisSession @relation(fields: [sessionId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum PhotoAngle {
+  FULL_PLANT
+  AFFECTED_LEAF
+  LEAF_UNDERSIDE
+  STEM
+  ROOT
+  SOIL_SURFACE
+}
+
+enum ImageQualityIssue {
+  BLURRY
+  TOO_DARK
+  TOO_BRIGHT
+  TOO_FAR
+  PARTIAL_VIEW
+}
+
+model AIAnalysisResult {
+  id                    String            @id @default(cuid())
+
+  primaryCategory       DiagnosisCategory
+  primaryNameAr         String
+  primaryNameEn         String
+  primaryConfidence     Float
+  primarySeverity       Severity
+
+  alternativeDiagnoses  Json @default("[]")
+  affectedParts         PlantPart[]
+
+  recommendedActions    String[]
+  fertilizersToAvoid    FertilizerType[]
+  fertilizersToUse      FertilizerType[]
+
+  followUpDays          Int?
+  followUpReason        String?
+
+  rawApiResponse        Json
+  modelUsed             String
+  processingMs          Int
+
+  sessionId String           @unique
+  session   DiagnosisSession @relation(fields: [sessionId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum PlantPart {
+  LEAVES
+  LEAF_UNDERSIDE
+  STEM
+  ROOTS
+  FLOWERS
+  FRUIT
+  SOIL
+  BARK
+}
+
+model DiagnosisConfirmation {
+  id       String               @id @default(cuid())
+  decision ConfirmationDecision
+  userNote String?
+
+  overrideCategory DiagnosisCategory?
+  overrideNote     String?
+
+  sessionId String           @unique
+  session   DiagnosisSession @relation(fields: [sessionId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum ConfirmationDecision {
+  ACCEPTED
+  ACCEPTED_MODIFIED
+  REJECTED
+}
+
+enum Sensitivity {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}

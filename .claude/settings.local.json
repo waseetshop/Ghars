@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(New-Item -ItemType Directory -Path \"G:\\\\ghars\\\\src\\\\lib\\\\scheduling\" -Force)",
+      "PowerShell(New-Item -ItemType Directory -Path \"G:\\\\ghars\\\\src\\\\lib\\\\ai\" -Force)",
+      "PowerShell(New-Item -ItemType Directory -Path \"G:\\\\ghars\\\\src\\\\lib\\\\weather\" -Force)",
+      "PowerShell(Get-Content \"G:\\\\ghars\\\\.env\" | ForEach-Object { $i=0 } { $i++; \"$i`: $_\" })",
+      "PowerShell(cd G:\\\\ghars; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd G:\\\\ghars; npm run dev\" -WindowStyle Normal; Start-Sleep -Seconds 5; Write-Output \"Server starting...\")",
+      "PowerShell($gardenId = \"cmp8rcun00000u0xvzgtxz17p\"; $avocadoId = \"cmp8ra07m0000y4xvjvpbz0vq\"; $body = \"{`\"catalogId`\":`\"$avocadoId`\",`\"plantedAt`\":`\"2025-03-01`\",`\"location`\":`\"OUTDOOR`\",`\"potSize`\":`\"LARGE`\",`\"currentTempC`\":44}\"; $plant = Invoke-RestMethod -Uri \"http://localhost:3000/api/gardens/$gardenId/plants\" -Method POST -ContentType \"application/json\" -Body $body; $plant | ConvertTo-Json -Depth 4)"
+    ]
+  }
+}
