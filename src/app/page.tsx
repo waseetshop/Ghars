@@ -1,65 +1,134 @@
-import Image from "next/image";
+import { prisma } from "@/lib/prisma";
+import PlantCard from "@/components/PlantCard";
 
-export default function Home() {
+const DEV_USER_ID = "dev-user-001";
+
+async function getGardens() {
+  return prisma.garden.findMany({
+    where: { userId: DEV_USER_ID },
+    include: {
+      plants: {
+        include: {
+          catalog:   true,
+          schedules: {
+            where:   { type: "WATERING", isActive: true },
+            orderBy: { nextDueAt: "asc" },
+            take:    1,
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+const climateLabel: Record<string, string> = {
+  HOT_ARID:      "حار جاف",
+  MEDITERRANEAN: "متوسطي",
+  TROPICAL:      "استوائي",
+  TEMPERATE:     "معتدل",
+};
+
+export default async function DashboardPage() {
+  const gardens = await getGardens();
+
+  const totalPlants  = gardens.reduce((s, g) => s + g.plants.length, 0);
+  const healthyCount = gardens.flatMap(g => g.plants).filter(p => p.healthStatus === "HEALTHY").length;
+  const alertCount   = totalPlants - healthyCount;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#1E1E1E]">
+      {/* ── Header ──────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-10 bg-[#1E1E1E]/90 backdrop-blur border-b border-[#313131]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <span className="text-xl font-bold text-[#C5A059] tracking-wide">غَرْس</span>
+          <span className="text-xs text-[#6B6560]">حديقتك الذكية</span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+        {/* ── Stats bar ───────────────────────────────────────── */}
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard value={totalPlants}  label="نبتة"        accent="gold" />
+          <StatCard value={healthyCount} label="بصحة جيدة"   accent="green" />
+          <StatCard value={alertCount}   label="تحتاج عناية" accent={alertCount > 0 ? "red" : "muted"} />
         </div>
+
+        {/* ── Empty state ─────────────────────────────────────── */}
+        {gardens.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
+            <span className="text-5xl">🌱</span>
+            <p className="text-[#A89F96] text-sm">لا توجد حدائق بعد</p>
+            <p className="text-[#6B6560] text-xs">أضف حديقتك الأولى للبدء</p>
+          </div>
+        )}
+
+        {/* ── Gardens ─────────────────────────────────────────── */}
+        {gardens.map(garden => (
+          <section key={garden.id} className="space-y-4">
+            {/* garden header */}
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold text-[#F0EBE3]">{garden.name}</h2>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#272727] text-[#A89F96] border border-[#313131]">
+                {climateLabel[garden.climate] ?? garden.climate}
+              </span>
+              <span className="text-xs text-[#6B6560] mr-auto">
+                {garden.plants.length} نبتة
+              </span>
+            </div>
+
+            {/* plants grid */}
+            {garden.plants.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#313131] py-10 text-center">
+                <p className="text-xs text-[#6B6560]">لا توجد نباتات في هذه الحديقة</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {garden.plants.map(plant => (
+                  <PlantCard
+                    key={plant.id}
+                    plantId={plant.id}
+                    gardenId={garden.id}
+                    nickname={plant.nickname}
+                    catalogName={plant.catalog.nameAr}
+                    category={plant.catalog.category as any}
+                    healthStatus={plant.healthStatus as any}
+                    location={plant.location as any}
+                    nextWatering={plant.schedules[0]?.nextDueAt ?? null}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        ))}
+
       </main>
+    </div>
+  );
+}
+
+/* ── small helper component ───────────────────────────────────── */
+function StatCard({
+  value,
+  label,
+  accent,
+}: {
+  value: number;
+  label: string;
+  accent: "gold" | "green" | "red" | "muted";
+}) {
+  const colors = {
+    gold:  "text-[#C5A059]",
+    green: "text-[#6DBF8A]",
+    red:   "text-[#E84545]",
+    muted: "text-[#A89F96]",
+  };
+  return (
+    <div className="rounded-2xl bg-[#272727] border border-[#313131] px-4 py-3 text-center">
+      <p className={`text-2xl font-bold ${colors[accent]}`}>{value}</p>
+      <p className="text-xs text-[#A89F96] mt-0.5">{label}</p>
     </div>
   );
 }

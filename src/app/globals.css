@@ -1,26 +1,68 @@
 @import "tailwindcss";
 
+/* ─── نظام ألوان غَرْس ─────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --charcoal-900: #1E1E1E;
+  --charcoal-800: #272727;
+  --charcoal-700: #313131;
+  --charcoal-600: #3D3D3D;
+  --charcoal-500: #4A4A4A;
+
+  --gold:         #C5A059;
+  --gold-dim:     #9E7E42;
+  --gold-glow:    #D4B06A;
+
+  --pink:         #D9A3AA;
+  --pink-dim:     #B8848C;
+
+  --text-primary:   #F0EBE3;
+  --text-secondary: #A89F96;
+  --text-muted:     #6B6560;
+
+  --healthy:  #6DBF8A;
+  --stressed: #D9A35A;
+  --diseased: #C96B6B;
+  --critical: #E84545;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--charcoal-900);
+  --color-foreground: var(--text-primary);
+
+  --color-charcoal-900: var(--charcoal-900);
+  --color-charcoal-800: var(--charcoal-800);
+  --color-charcoal-700: var(--charcoal-700);
+  --color-charcoal-600: var(--charcoal-600);
+  --color-charcoal-500: var(--charcoal-500);
+
+  --color-gold:      var(--gold);
+  --color-gold-dim:  var(--gold-dim);
+  --color-gold-glow: var(--gold-glow);
+
+  --color-pink:     var(--pink);
+  --color-pink-dim: var(--pink-dim);
+
+  --color-text-primary:   var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted:     var(--text-muted);
+
+  --color-healthy:  var(--healthy);
+  --color-stressed: var(--stressed);
+  --color-diseased: var(--diseased);
+  --color-critical: var(--critical);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+* { box-sizing: border-box; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--charcoal-900);
+  color:      var(--text-primary);
+  direction:  rtl;
+  font-family: var(--font-cairo), 'Cairo', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* ─── scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; }
+::-webkit-scrollbar-track { background: var(--charcoal-800); }
+::-webkit-scrollbar-thumb { background: var(--charcoal-600); border-radius: 99px; }
