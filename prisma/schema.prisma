@@ -11,15 +11,8 @@ datasource db {
 // PHASE 1 — Plant Profile
 // ═══════════════════════════════════════════════════════════════
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-
-  gardens       Garden[]
-  notifications Notification[]
-}
+// User model removed — المصادقة تتم عبر Supabase Auth (auth.users)
+// Garden.userId يحتوي على auth.uid() مباشرةً بدون foreign key
 
 model Garden {
   id        String  @id @default(cuid())
@@ -27,11 +20,23 @@ model Garden {
   climate   Climate @default(HOT_ARID)
   createdAt DateTime @default(now())
 
-  userId  String
-  user    User    @relation(fields: [userId], references: [id])
+  userId  String   // Supabase Auth UID — لا يوجد foreign key
+
+  // ── نظام السقي ────────────────────────────────────────────
+  irrigationType    IrrigationType @default(MANUAL)
+  timerDurationMin  Int?            // مدة كل جلسة بالدقائق
+  timerTimesPerDay  Int?            // عدد مرات السقي في اليوم
+  timerTimes        String[]        @default([])  // ["07:00", "18:00"]
+  timerIntervalDays Int?            // كل كم يوم (1 = يومياً)
 
   plants        Plant[]
   weatherConfig GardenWeatherConfig?
+}
+
+enum IrrigationType {
+  MANUAL
+  TIMER
+  SMART_TIMER
 }
 
 enum Climate {
@@ -161,6 +166,8 @@ model Schedule {
   isActive             Boolean      @default(true)
   lastTempUsed         Float?
 
+  isManualOverride     Boolean @default(false)  // ضبط يدوي من المستخدم
+
   plantId String
   plant   Plant  @relation(fields: [plantId], references: [id])
 
@@ -216,8 +223,7 @@ model Notification {
   scheduleId String?
   schedule   Schedule? @relation(fields: [scheduleId], references: [id])
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
+  userId String   // Supabase Auth UID
 
   createdAt DateTime @default(now())
 }

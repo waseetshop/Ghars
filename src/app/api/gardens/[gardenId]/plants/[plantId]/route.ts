@@ -124,7 +124,46 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "النبتة غير موجودة" }, { status: 404 });
     }
 
-    await prisma.plant.delete({ where: { id: plantId } });
+    // Manual cascade — schema has no onDelete: Cascade
+    await prisma.$transaction(async (tx) => {
+      // IDs of related schedules & sessions
+      const schedules = await tx.schedule.findMany({ where: { plantId }, select: { id: true } });
+      const scheduleIds = schedules.map((s) => s.id);
+
+      const sessions = await tx.diagnosisSession.findMany({ where: { plantId }, select: { id: true } });
+      const sessionIds = sessions.map((s) => s.id);
+
+      // Schedule children
+      if (scheduleIds.length > 0) {
+        await tx.schedulePause.deleteMany({ where: { scheduleId: { in: scheduleIds } } });
+        await tx.fertilizerAssignment.deleteMany({ where: { scheduleId: { in: scheduleIds } } });
+        await tx.scheduleEntry.deleteMany({ where: { scheduleId: { in: scheduleIds } } });
+        await tx.notification.deleteMany({ where: { scheduleId: { in: scheduleIds } } });
+        await tx.weatherScheduleOverride.deleteMany({ where: { scheduleId: { in: scheduleIds } } });
+      }
+      await tx.schedule.deleteMany({ where: { plantId } });
+
+      // DiagnosisSession children
+      if (sessionIds.length > 0) {
+        await tx.diagnosisConfirmation.deleteMany({ where: { sessionId: { in: sessionIds } } });
+        await tx.aIAnalysisResult.deleteMany({ where: { sessionId: { in: sessionIds } } });
+        await tx.diagnosisImage.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      }
+
+      // HealthLogs (may reference sessions — clear FK first)
+      await tx.healthLog.updateMany({ where: { plantId }, data: { diagnosisSessionId: null } });
+      await tx.healthLog.deleteMany({ where: { plantId } });
+
+      // DiagnosisSessions (after healthLogs released the FK)
+      await tx.diagnosisSession.deleteMany({ where: { plantId } });
+
+      // Photos
+      await tx.plantPhoto.deleteMany({ where: { plantId } });
+
+      // Plant
+      await tx.plant.delete({ where: { id: plantId } });
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[DELETE /plants/[plantId]]", error);

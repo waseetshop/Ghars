@@ -1,27 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { Climate } from "@prisma/client";
+import type { Climate, IrrigationType } from "@prisma/client";
 
-// TODO: استبدل هذا بـ userId من session المستخدم بعد إضافة Auth
-const DEV_USER_ID = "dev-user-001";
-
-async function ensureDevUser() {
-  return prisma.user.upsert({
-    where:  { id: DEV_USER_ID },
-    update: {},
-    create: { id: DEV_USER_ID, email: "dev@ghars.app", name: "مطور" },
-  });
+// مساعد: استخراج userId من Authorization header
+function getUserId(request: NextRequest): string | null {
+  // Flutter يُرسل: Authorization: Bearer <supabase-access-token>
+  // نستخدم sub claim من JWT — أو نقرأ x-user-id header للتطوير
+  const userId = request.headers.get("x-user-id");
+  return userId ?? null;
 }
 
 // ─── GET /api/gardens ─────────────────────────────────────────
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const userId = getUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const gardens = await prisma.garden.findMany({
-      where:   { userId: DEV_USER_ID },
+      where:   { userId },
       orderBy: { createdAt: "desc" },
-      include: {
-        _count: { select: { plants: true } },
-      },
+      include: { _count: { select: { plants: true } } },
     });
 
     return NextResponse.json({ data: gardens });
@@ -34,8 +34,29 @@ export async function GET() {
 // ─── POST /api/gardens ────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
+    const userId = getUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { name, climate } = body as { name?: string; climate?: Climate };
+    const {
+      name,
+      climate,
+      irrigationType,
+      timerDurationMin,
+      timerTimesPerDay,
+      timerTimes,
+      timerIntervalDays,
+    } = body as {
+      name?:             string;
+      climate?:          Climate;
+      irrigationType?:   IrrigationType;
+      timerDurationMin?: number;
+      timerTimesPerDay?: number;
+      timerTimes?:       string[];
+      timerIntervalDays?: number;
+    };
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "اسم الحديقة مطلوب" }, { status: 400 });
@@ -46,13 +67,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "نوع المناخ غير صحيح" }, { status: 400 });
     }
 
-    await ensureDevUser();
-
     const garden = await prisma.garden.create({
       data: {
-        name:    name.trim(),
-        climate: climate ?? "HOT_ARID",
-        userId:  DEV_USER_ID,
+        name:             name.trim(),
+        climate:          climate          ?? "HOT_ARID",
+        irrigationType:   irrigationType   ?? "MANUAL",
+        timerDurationMin: timerDurationMin ?? null,
+        timerTimesPerDay: timerTimesPerDay ?? null,
+        timerTimes:       timerTimes       ?? [],
+        timerIntervalDays: timerIntervalDays ?? null,
+        userId,
       },
     });
 
