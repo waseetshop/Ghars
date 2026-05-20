@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateWateringInterval } from "@/lib/scheduling/calculateWateringInterval";
+import { getNextSmartTimerSlot } from "@/lib/scheduling/timerSlot";
 import type { PlantLocation, PotSize, SoilType } from "@prisma/client";
 
 type Params = { params: Promise<{ gardenId: string }> };
@@ -71,16 +72,33 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const plantedDate = new Date(plantedAt);
+    const now = new Date();
 
-    // حساب دورة الري الديناميكية (Phase 2)
-    const wateringCalc = calculateWateringInterval({
-      baseCycleDays:  catalog.wateringCycleSummer,
-      plantedAt:      plantedDate,
-      currentTempC,
-      potSize:        potSize ?? null,
-      location,
-      season:         "summer",
-    });
+    // ── حساب موعد الري الأول ─────────────────────────────────
+    // SMART_TIMER: موحّد مع الـ slot التالي للجهاز
+    // TIMER/MANUAL: حساب فردي بناءً على احتياج النبتة
+    let firstNextDueAt: Date;
+    let firstIntervalDays: number;
+
+    if (garden.irrigationType === "SMART_TIMER") {
+      firstNextDueAt   = getNextSmartTimerSlot(
+        garden.timerTimes,
+        garden.timerIntervalDays ?? 1,
+        now,
+      );
+      firstIntervalDays = garden.timerIntervalDays ?? 1;
+    } else {
+      const wateringCalc = calculateWateringInterval({
+        baseCycleDays:  catalog.wateringCycleSummer,
+        plantedAt:      plantedDate,
+        currentTempC,
+        potSize:        potSize ?? null,
+        location,
+        season:         "summer",
+      });
+      firstNextDueAt    = wateringCalc.nextDueAt;
+      firstIntervalDays = wateringCalc.adjustedDays;
+    }
 
     // إنشاء النبتة + جدول الري في transaction واحدة
     const plant = await prisma.$transaction(async (tx) => {
@@ -102,8 +120,8 @@ export async function POST(request: NextRequest, { params }: Params) {
           plantId:             newPlant.id,
           type:                "WATERING",
           baseIntervalDays:    catalog.wateringCycleSummer,
-          adjustedIntervalDays: wateringCalc.adjustedDays,
-          nextDueAt:           wateringCalc.nextDueAt,
+          adjustedIntervalDays: firstIntervalDays,
+          nextDueAt:           firstNextDueAt,
           lastTempUsed:        currentTempC,
         },
       });

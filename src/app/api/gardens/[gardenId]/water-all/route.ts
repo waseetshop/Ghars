@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateWateringInterval } from "@/lib/scheduling/calculateWateringInterval";
+import { getNextSmartTimerSlot } from "@/lib/scheduling/timerSlot";
 import type { PlantLocation, PotSize } from "@prisma/client";
 
 type Params = { params: Promise<{ gardenId: string }> };
 
 // ─── POST /api/gardens/[gardenId]/water-all ───────────────────
-// سقي جميع نباتات الحديقة دفعة واحدة (للمؤقت الذكي)
+// سقي جميع نباتات الحديقة دفعة واحدة
+// • SMART_TIMER → nextDueAt موحّد = الـ slot التالي في جدول الجهاز
+// • TIMER       → كل نبتة تحتفظ بجدولها (timerIntervalDays إذا ضُبط)
+// • MANUAL      → حساب فردي لكل نبتة
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { gardenId } = await params;
@@ -33,6 +37,17 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const wateredAt   = body.wateredAt ? new Date(body.wateredAt) : new Date();
     const currentTemp = body.currentTempC ?? 30;
+    const isSmartTimer = garden.irrigationType === "SMART_TIMER";
+
+    // حساب الـ nextDueAt موحّد مسبقاً للمؤقت الذكي
+    let unifiedNextDueAt: Date | null = null;
+    if (isSmartTimer) {
+      unifiedNextDueAt = getNextSmartTimerSlot(
+        garden.timerTimes,
+        garden.timerIntervalDays ?? 1,
+        wateredAt,
+      );
+    }
 
     let updatedCount = 0;
 
@@ -41,13 +56,23 @@ export async function POST(request: NextRequest, { params }: Params) {
         const schedule = plant.schedules[0];
         if (!schedule) continue;
 
-        // استخدم مدة المؤقت إذا متوفرة، وإلا احسب تلقائياً
-        let intervalDays: number;
-        if (garden.irrigationType !== "MANUAL" && garden.timerIntervalDays) {
-          intervalDays = garden.timerIntervalDays;
+        let nextDueAt: Date;
+
+        if (isSmartTimer && unifiedNextDueAt) {
+          // ── المؤقت الذكي: كل النباتات على نفس الـ slot ──────
+          nextDueAt = unifiedNextDueAt;
+        } else if (garden.irrigationType === "TIMER" && garden.timerIntervalDays) {
+          // ── مؤقت زراعي: فترة ثابتة من الجهاز ───────────────
+          nextDueAt = new Date(
+            wateredAt.getTime() + garden.timerIntervalDays * 24 * 60 * 60 * 1000,
+          );
         } else if (schedule.isManualOverride) {
-          intervalDays = schedule.adjustedIntervalDays;
+          // ── ضبط يدوي للنبتة ─────────────────────────────────
+          nextDueAt = new Date(
+            wateredAt.getTime() + schedule.adjustedIntervalDays * 24 * 60 * 60 * 1000,
+          );
         } else {
+          // ── حساب تلقائي فردي (MANUAL) ────────────────────────
           const calc = calculateWateringInterval({
             baseCycleDays: plant.catalog.wateringCycleSummer,
             plantedAt:     plant.plantedAt,
@@ -56,20 +81,18 @@ export async function POST(request: NextRequest, { params }: Params) {
             location:      plant.location as PlantLocation,
             season:        "summer",
           });
-          intervalDays = calc.adjustedDays;
+          nextDueAt = calc.nextDueAt;
         }
-
-        const nextDueAt = new Date(
-          wateredAt.getTime() + intervalDays * 24 * 60 * 60 * 1000,
-        );
 
         await tx.schedule.update({
           where: { id: schedule.id },
           data: {
             nextDueAt,
             lastCompletedAt:      wateredAt,
-            adjustedIntervalDays: intervalDays,
-            lastTempUsed:         currentTemp,
+            adjustedIntervalDays: isSmartTimer
+              ? (garden.timerIntervalDays ?? 1)
+              : schedule.adjustedIntervalDays,
+            lastTempUsed: currentTemp,
           },
         });
 
@@ -83,9 +106,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
 
     return NextResponse.json({
-      success:      true,
-      wateredCount: updatedCount,
+      success:        true,
+      wateredCount:   updatedCount,
       wateredAt,
+      nextDueAt:      unifiedNextDueAt, // يُرجع الـ slot للـ UI
     });
   } catch (error) {
     console.error("[POST /water-all]", error);
