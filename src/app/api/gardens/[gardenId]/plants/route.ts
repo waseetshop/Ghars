@@ -142,10 +142,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       {
         data: plantWithDetails,
         wateringSchedule: {
-          nextDueAt:    wateringCalc.nextDueAt,
-          intervalDays: wateringCalc.adjustedDays,
-          ageCategory:  wateringCalc.ageCategory,
-          modifiers:    wateringCalc.appliedModifiers,
+          nextDueAt:    firstNextDueAt,
+          intervalDays: firstIntervalDays,
         },
       },
       { status: 201 }
