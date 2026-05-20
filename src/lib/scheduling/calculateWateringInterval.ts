@@ -65,7 +65,7 @@ export function calculateWateringInterval(input: WateringInput): WateringResult 
   const locationMod = getLocationModifier(input.location);
 
   const raw          = input.baseCycleDays * ageMod * tempMod * potMod * locationMod;
-  const adjustedDays = Math.max(1, Math.round(raw * 2) / 2);
+  const adjustedDays = Math.max(1, Math.round(raw));
   const nextDueAt    = new Date(Date.now() + adjustedDays * 86_400_000);
 
   return {
