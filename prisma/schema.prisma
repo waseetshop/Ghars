@@ -648,3 +648,31 @@ enum Sensitivity {
   HIGH
   VERY_HIGH
 }
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 6 — الروزنامة الزراعية الفلكية (Agricultural Star Calendar)
+// ═══════════════════════════════════════════════════════════════
+
+model Season {
+  id     Int    @id @default(autoincrement())
+  nameAr String @unique   // الشتاء / الربيع / الصيف / الخريف
+  order  Int               // 1-4
+
+  stars  AgriculturalStar[]
+}
+
+model AgriculturalStar {
+  id           Int    @id @default(autoincrement())
+  seasonId     Int
+  nameAr       String               // النعائم (الشباط)
+  startMonth   Int                  // 1-12
+  startDay     Int                  // 1-31
+  durationDays Int    @default(13)
+  orderInYear  Int                  // 1-28 (ترتيب طلوع النجم في السنة)
+
+  weatherDescription String
+  plantingAdvice     String
+  generalAdvice      String?
+
+  season Season @relation(fields: [seasonId], references: [id])
+}
